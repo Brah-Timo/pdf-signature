@@ -1,0 +1,302 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# k8s/api-deployment.yaml — pdf-signature API server Kubernetes manifests
+# ─────────────────────────────────────────────────────────────────────────────
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pdf-signature
+  labels:
+    app.kubernetes.io/name: pdf-signature
+
+---
+# ── ConfigMap (non-secret config) ────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pdf-signature-config
+  namespace: pdf-signature
+data:
+  NODE_ENV: "production"
+  PORT: "4000"
+  CORS_ORIGIN: "https://app.pdf-signature.dev"
+  SIGNING_PAGE_URL: "https://sign.pdf-signature.dev"
+
+---
+# ── Secret (sensitive values — managed externally in production) ──────────────
+# In production, use AWS Secrets Manager + External Secrets Operator or Vault
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pdf-signature-secrets
+  namespace: pdf-signature
+type: Opaque
+stringData:
+  DATABASE_URL: "postgresql://user:password@postgres-svc:5432/pdf_signature"
+  REDIS_URL:    "redis://:password@redis-svc:6379"
+  JWT_SECRET:   "change-me-in-production-min-32-chars"
+  ENCRYPTION_KEY: "change-me-32-bytes-hex-key-here!!"
+
+---
+# ── API Deployment ────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+  namespace: pdf-signature
+  labels:
+    app: api-server
+    version: "1.0.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-server
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: api-server
+    spec:
+      # Never run as root
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+
+      containers:
+        - name: api-server
+          image: ghcr.io/pdf-signature/api-server:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 4000
+              protocol: TCP
+
+          envFrom:
+            - configMapRef:
+                name: pdf-signature-config
+            - secretRef:
+                name: pdf-signature-secrets
+
+          resources:
+            requests:
+              cpu:    "100m"
+              memory: "256Mi"
+            limits:
+              cpu:    "500m"
+              memory: "512Mi"
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds:       20
+            failureThreshold:    3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds:       10
+            failureThreshold:    3
+
+          # Security hardening
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem:   true
+            capabilities:
+              drop: ["ALL"]
+
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: tmp
+          emptyDir: {}
+
+      # Graceful shutdown
+      terminationGracePeriodSeconds: 30
+
+---
+# ── API Service ───────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-server-svc
+  namespace: pdf-signature
+spec:
+  selector:
+    app: api-server
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+  type: ClusterIP
+
+---
+# ── Signing Page Deployment ───────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: signing-page
+  namespace: pdf-signature
+  labels:
+    app: signing-page
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: signing-page
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: signing-page
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+
+      containers:
+        - name: signing-page
+          image: ghcr.io/pdf-signature/signing-page:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: NEXT_PUBLIC_API_URL
+              value: "https://api.pdf-signature.dev"
+            - name: NEXTAUTH_URL
+              value: "https://sign.pdf-signature.dev"
+            - name: NEXTAUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pdf-signature-secrets
+                  key: JWT_SECRET
+
+          resources:
+            requests:
+              cpu:    "100m"
+              memory: "256Mi"
+            limits:
+              cpu:    "500m"
+              memory: "512Mi"
+
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 30
+
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+
+---
+# ── Signing Page Service ──────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: signing-page-svc
+  namespace: pdf-signature
+spec:
+  selector:
+    app: signing-page
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  type: ClusterIP
+
+---
+# ── Ingress (NGINX + cert-manager TLS) ───────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pdf-signature-ingress
+  namespace: pdf-signature
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "52m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+spec:
+  tls:
+    - hosts:
+        - api.pdf-signature.dev
+        - sign.pdf-signature.dev
+        - app.pdf-signature.dev
+      secretName: pdf-signature-tls
+
+  rules:
+    - host: api.pdf-signature.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-server-svc
+                port:
+                  name: http
+
+    - host: sign.pdf-signature.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: signing-page-svc
+                port:
+                  name: http
+
+---
+# ── HorizontalPodAutoscaler ───────────────────────────────────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-server-hpa
+  namespace: pdf-signature
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-server
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

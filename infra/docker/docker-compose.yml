@@ -1,0 +1,140 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# docker-compose.yml — pdf-signature local development stack
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: '3.9'
+
+services:
+  # ── PostgreSQL database ────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: pdf-sig-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       pdf_signature
+      POSTGRES_USER:     pdf_sig_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password_change_me}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U pdf_sig_user -d pdf_signature']
+      interval: 10s
+      timeout:  5s
+      retries:  5
+
+  # ── Redis cache ────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: pdf-sig-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-dev_redis_password} --appendonly yes
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '--no-auth-warning', '-a', '${REDIS_PASSWORD:-dev_redis_password}', 'ping']
+      interval: 10s
+      timeout:  5s
+      retries:  5
+
+  # ── API server ────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.api
+    container_name: pdf-sig-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV:          production
+      PORT:              4000
+      DATABASE_URL:      postgresql://pdf_sig_user:${POSTGRES_PASSWORD:-dev_password_change_me}@postgres:5432/pdf_signature
+      REDIS_URL:         redis://:${REDIS_PASSWORD:-dev_redis_password}@redis:6379
+      JWT_SECRET:        ${JWT_SECRET:?JWT_SECRET is required}
+      ENCRYPTION_KEY:    ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
+      AWS_ACCESS_KEY_ID:     ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION:            ${AWS_REGION:-eu-west-1}
+      S3_BUCKET_NAME:        ${S3_BUCKET_NAME:-pdf-signature-dev}
+      RESEND_API_KEY:        ${RESEND_API_KEY:-}
+      STRIPE_SECRET_KEY:     ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      SIGNING_PAGE_URL:  http://signing-page:3000
+      CORS_ORIGIN:       http://localhost:3001
+    ports:
+      - '4000:4000'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:4000/health || exit 1']
+      interval: 30s
+      timeout:  10s
+      retries:  3
+      start_period: 20s
+
+  # ── Signing page ──────────────────────────────────────────────────────────
+  signing-page:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.signing-page
+    container_name: pdf-sig-signing
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV:               production
+      NEXT_PUBLIC_API_URL:    http://api:4000
+      NEXTAUTH_URL:           http://localhost:3000
+      NEXTAUTH_SECRET:        ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required}
+    ports:
+      - '3000:3000'
+
+  # ── Dashboard (dev only — use pnpm dev in production) ─────────────────────
+  dashboard:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.dashboard
+    container_name: pdf-sig-dashboard
+    restart: unless-stopped
+    profiles:
+      - dashboard
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV:               production
+      NEXT_PUBLIC_API_URL:    http://api:4000
+      NEXTAUTH_URL:           http://localhost:3001
+      NEXTAUTH_SECRET:        ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required}
+      GITHUB_CLIENT_ID:       ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET:   ${GITHUB_CLIENT_SECRET:-}
+    ports:
+      - '3001:3001'
+
+  # ── Adminer (dev database GUI — not in production) ────────────────────────
+  adminer:
+    image: adminer:latest
+    container_name: pdf-sig-adminer
+    restart: unless-stopped
+    profiles:
+      - tools
+    depends_on:
+      - postgres
+    ports:
+      - '8080:8080'
+
+volumes:
+  postgres_data:
+    name: pdf-sig-postgres-data
+  redis_data:
+    name: pdf-sig-redis-data
+
+networks:
+  default:
+    name: pdf-signature-network

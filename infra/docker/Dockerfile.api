@@ -1,0 +1,72 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Dockerfile.api — pdf-signature API server (Fastify)
+# Multi-stage build: build → prune → production
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Stage 1: Dependencies ────────────────────────────────────────────────────
+FROM node:20-alpine AS deps
+RUN apk add --no-cache libc6-compat python3 make g++
+WORKDIR /app
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
+
+# Copy workspace manifests first (layer caching)
+COPY pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml ./
+COPY packages/core/package.json       ./packages/core/
+COPY packages/crypto/package.json     ./packages/crypto/
+COPY packages/pdf/package.json        ./packages/pdf/
+COPY packages/api-server/package.json ./packages/api-server/
+
+RUN pnpm install --frozen-lockfile
+
+# ── Stage 2: Builder ─────────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
+
+COPY --from=deps /app/node_modules      ./node_modules
+COPY --from=deps /app/packages/core/node_modules     ./packages/core/node_modules
+COPY --from=deps /app/packages/crypto/node_modules   ./packages/crypto/node_modules
+COPY --from=deps /app/packages/pdf/node_modules      ./packages/pdf/node_modules
+COPY --from=deps /app/packages/api-server/node_modules ./packages/api-server/node_modules
+
+COPY . .
+
+# Generate Prisma client
+RUN cd packages/api-server && npx prisma generate
+
+# Build all packages in dependency order
+RUN pnpm --filter @pdf-signature/crypto build
+RUN pnpm --filter @pdf-signature/pdf    build
+RUN pnpm --filter @pdf-signature/core   build
+RUN pnpm --filter @pdf-signature/api-server build
+
+# ── Stage 3: Production image ────────────────────────────────────────────────
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Create non-root user for security
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser  --system --uid  1001 apiserver
+
+# Copy only production artefacts
+COPY --from=builder --chown=apiserver:nodejs /app/packages/api-server/dist   ./packages/api-server/dist
+COPY --from=builder --chown=apiserver:nodejs /app/packages/api-server/node_modules ./packages/api-server/node_modules
+COPY --from=builder --chown=apiserver:nodejs /app/packages/core/dist         ./packages/core/dist
+COPY --from=builder --chown=apiserver:nodejs /app/packages/crypto/dist       ./packages/crypto/dist
+COPY --from=builder --chown=apiserver:nodejs /app/packages/pdf/dist          ./packages/pdf/dist
+COPY --from=builder --chown=apiserver:nodejs /app/packages/api-server/src/db/schema.prisma ./packages/api-server/prisma/
+
+USER apiserver
+
+EXPOSE 4000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD wget -qO- http://localhost:4000/health || exit 1
+
+CMD ["node", "packages/api-server/dist/server.js"]

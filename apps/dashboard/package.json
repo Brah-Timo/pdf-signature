@@ -1,0 +1,42 @@
+{
+  "name": "@pdf-signature/dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pro dashboard for pdf-signature — Next.js 15 App Router",
+  "scripts": {
+    "dev": "next dev --port 3001",
+    "build": "next build",
+    "start": "next start --port 3001",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pdf-signature/core": "workspace:*",
+    "next": "15.0.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@tanstack/react-query": "^5.17.0",
+    "@tanstack/react-table": "^8.11.0",
+    "recharts": "^2.10.0",
+    "lucide-react": "^0.309.0",
+    "clsx": "^2.1.0",
+    "tailwind-merge": "^2.2.0",
+    "next-auth": "^5.0.0-beta.4",
+    "zod": "^3.22.4",
+    "react-hook-form": "^7.49.0",
+    "@hookform/resolvers": "^3.3.2",
+    "date-fns": "^3.2.0",
+    "axios": "^1.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "typescript": "^5.3.3",
+    "tailwindcss": "^3.4.1",
+    "postcss": "^8.4.33",
+    "autoprefixer": "^10.4.17",
+    "eslint": "^8.56.0",
+    "eslint-config-next": "15.0.3"
+  }
+}
