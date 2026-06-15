@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-inter: "Inter", sans-serif;
+  --font-dancing: "Dancing Script", cursive;
+  --brand-primary: #1a3e8c;
+  --brand-secondary: #2563eb;
+  --signature-ink: #1a1a2e;
+}
+
+/* ── Signature Canvas ─────────────────────────── */
+.signature-canvas {
+  touch-action: none;
+  cursor: crosshair;
+  width: 100%;
+  height: 180px;
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fafafa 0%, #f8fafc 100%);
+  transition: border-color 0.2s;
+}
+
+.signature-canvas:hover,
+.signature-canvas.has-signature {
+  border-color: var(--brand-secondary);
+  border-style: solid;
+}
+
+/* ── Method Tabs ──────────────────────────────── */
+.method-tab {
+  @apply px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200;
+  @apply text-slate-500 hover:text-slate-700 hover:bg-slate-100;
+}
+
+.method-tab.active {
+  @apply bg-blue-600 text-white shadow-sm;
+}
+
+/* ── Typed Signature ──────────────────────────── */
+.typed-signature-input {
+  font-family: var(--font-dancing);
+  font-size: 2rem;
+  font-weight: 400;
+  color: var(--signature-ink);
+  border: none;
+  border-bottom: 2px solid #e2e8f0;
+  background: transparent;
+  width: 100%;
+  padding: 8px 0;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.typed-signature-input:focus {
+  border-bottom-color: var(--brand-secondary);
+}
+
+.typed-signature-preview {
+  font-family: var(--font-dancing);
+  font-size: 2.5rem;
+  color: var(--signature-ink);
+  padding: 16px 0 8px;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1.5px solid #e2e8f0;
+}
+
+/* ── Legal Notice ─────────────────────────────── */
+.legal-notice {
+  @apply text-xs text-slate-400 text-center leading-relaxed;
+}
+
+/* ── PDF Preview ──────────────────────────────── */
+.pdf-preview-container {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  background: white;
+}
+
+/* ── Submit Button ────────────────────────────── */
+.submit-button {
+  @apply w-full py-4 px-8 rounded-xl font-semibold text-base;
+  @apply bg-gradient-to-r from-blue-600 to-blue-700 text-white;
+  @apply hover:from-blue-700 hover:to-blue-800;
+  @apply active:scale-[0.98] transition-all duration-200;
+  @apply disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
+  @apply shadow-lg shadow-blue-500/25;
+}
+
+/* ── Security Badge ───────────────────────────── */
+.security-badge {
+  @apply inline-flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50;
+  @apply border border-emerald-200 rounded-full px-3 py-1;
+}
+
+/* ── Scrollbar ────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* ── RTL Support ─────────────────────────────── */
+[dir="rtl"] .typed-signature-input {
+  text-align: right;
+}
