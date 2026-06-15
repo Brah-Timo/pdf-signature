@@ -1,0 +1,268 @@
+// pdf-signature — Prisma Database Schema
+// PostgreSQL database for all signature requests, users, audit trails
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_DIRECT")
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum Plan {
+  FREE        // 20 signatures/month, free
+  PRO         // Unlimited, $22/month
+  TEAM        // Unlimited + team features, $99/month
+  ENTERPRISE  // Custom pricing, self-hosted option
+}
+
+enum SignatureStatus {
+  PENDING    // Awaiting signer action
+  SIGNED     // Successfully completed
+  EXPIRED    // Link expired before signing
+  DECLINED   // Signer explicitly declined
+  CANCELLED  // Requester cancelled
+}
+
+enum LegalStandard {
+  EIDAS    // EU Regulation 910/2014
+  KSA_ETL  // Saudi Arabia Electronic Transactions Law
+  ESIGN    // U.S. E-SIGN Act
+  UETA     // U.S. Uniform Electronic Transactions Act
+}
+
+enum WebhookStatus {
+  PENDING
+  DELIVERED
+  FAILED
+  RETRYING
+}
+
+// ─────────────────────────────────────────────
+// USERS (API consumers — the developers)
+// ─────────────────────────────────────────────
+
+model User {
+  id        String  @id @default(cuid())
+  email     String  @unique
+  name      String?
+  avatarUrl String?
+  plan      Plan    @default(FREE)
+
+  // Stripe
+  stripeCustomerId String?  @unique
+
+  // Monthly quota tracking (FREE plan)
+  monthlyCount Int      @default(0)
+  monthlyReset DateTime @default(now())
+
+  // Relationships
+  apiKeys    ApiKey[]
+  signatures SignatureRequest[]
+  sessions   MultiSignSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([stripeCustomerId])
+}
+
+// ─────────────────────────────────────────────
+// API KEYS
+// ─────────────────────────────────────────────
+
+model ApiKey {
+  id       String  @id @default(cuid())
+  keyHash  String  @unique  // SHA-256 of the raw key (never store raw)
+  name     String           // Human-readable label: "Production Key"
+  prefix   String           // First 12 chars for display: "pdf_live_abc1"
+  userId   String
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  isActive Boolean  @default(true)
+  lastUsed DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([keyHash])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────
+// SIGNATURE REQUESTS (single signer)
+// ─────────────────────────────────────────────
+
+model SignatureRequest {
+  id     String @id  // sig_<16 hex>
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Signer identity
+  signerEmail String
+  signerName  String?
+
+  // Status
+  status SignatureStatus @default(PENDING)
+
+  // File storage keys (S3/R2)
+  originalFileKey String  // Key for original (unsigned) PDF
+  signedFileKey   String? // Key for signed PDF
+
+  // Integrity hashes
+  originalHash String  // SHA-256 of original PDF
+  signedHash   String? // SHA-256 of signed PDF
+
+  // Legal configuration
+  legalStandard  LegalStandard  @default(EIDAS)
+  signatureLevel String         @default("AdES-B-T")
+
+  // Signing token (JWT)
+  signingToken String   @unique
+  expiresAt    DateTime
+  signedAt     DateTime?
+
+  // Notifications
+  webhookUrl    String?
+  webhookStatus WebhookStatus?
+  webhookSentAt DateTime?
+
+  // Metadata (arbitrary key-value from API consumer)
+  metadata Json @default("{}")
+
+  // Signature position in document
+  signaturePosition Json?
+
+  // Multi-sign session (if part of a multi-sign workflow)
+  multiSignSessionId String?
+  multiSignSession   MultiSignSession? @relation(fields: [multiSignSessionId], references: [id])
+  signerOrder        Int               @default(1)
+  signerRole         String?
+
+  // Audit trail
+  auditTrail AuditTrail?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([signerEmail])
+  @@index([status])
+  @@index([userId, createdAt])
+  @@index([multiSignSessionId])
+  @@index([expiresAt])
+}
+
+// ─────────────────────────────────────────────
+// MULTI-SIGN SESSIONS (coordinated multi-party signing)
+// ─────────────────────────────────────────────
+
+model MultiSignSession {
+  id     String @id  // msign_<16 hex>
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Document
+  originalFileKey String
+  originalHash    String
+  signedFileKey   String?
+
+  // Overall status
+  overallStatus  String @default("in_progress")
+  // "in_progress" | "completed" | "partially_expired" | "cancelled"
+
+  completedCount Int @default(0)
+  totalCount     Int
+
+  // Notification
+  webhookUrl           String?
+  notifyAllOnComplete  Boolean @default(false)
+
+  // Legal
+  legalStandard String @default("eIDAS")
+  metadata      Json   @default("{}")
+
+  // All signature steps
+  signatures SignatureRequest[]
+
+  // Audit trail for the complete session
+  auditTrailId String?
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  completedAt DateTime?
+
+  @@index([userId, createdAt])
+  @@index([overallStatus])
+}
+
+// ─────────────────────────────────────────────
+// AUDIT TRAIL (forensic evidence record)
+// ─────────────────────────────────────────────
+
+model AuditTrail {
+  id           String           @id  // audit_<16 hex>
+  signatureId  String           @unique
+  signature    SignatureRequest  @relation(fields: [signatureId], references: [id], onDelete: Cascade)
+
+  // Network identity
+  ipAddress   String
+  userAgent   String  @db.VarChar(500)
+  timezone    String
+  screenResolution String
+
+  // Geo (approximate, for audit purposes only)
+  geoCountry  String?
+  geoCity     String?
+  language    String?
+
+  // Device fingerprint (anonymous)
+  deviceFingerprint String?
+
+  // Cryptographic evidence
+  certificateSerial    String
+  pkcs7Size            Int
+  timestampAuthority   String?
+  tspTokenHex          String? @db.Text  // Raw RFC 3161 token (hex)
+  signatureValueHex    String? @db.Text  // First 64 bytes of PKCS#7 for quick lookup
+
+  // Consent record
+  consentText String @default("I agree this electronic signature is legally binding.")
+  consentTimestamp DateTime @default(now())
+
+  createdAt DateTime @default(now())
+
+  @@index([signatureId])
+}
+
+// ─────────────────────────────────────────────
+// WEBHOOK DELIVERY LOG
+// ─────────────────────────────────────────────
+
+model WebhookDelivery {
+  id          String @id @default(cuid())
+  signatureId String
+  url         String
+  event       String  // "signature.completed" etc.
+
+  // HTTP request/response
+  requestBody   Json
+  responseCode  Int?
+  responseBody  String? @db.Text
+  durationMs    Int?
+
+  status      WebhookStatus @default(PENDING)
+  attemptNumber Int         @default(1)
+  nextRetryAt   DateTime?
+
+  createdAt   DateTime @default(now())
+  deliveredAt DateTime?
+
+  @@index([signatureId])
+  @@index([status, nextRetryAt])
+}

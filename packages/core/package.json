@@ -1,0 +1,86 @@
+{
+  "name": "pdf-signature",
+  "version": "1.0.0",
+  "description": "Legal PDF e-signatures in one line of code. eIDAS & KSA compliant. Built with PKCS#7, X.509, RFC 3161.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./verify": {
+      "import": "./dist/pdfVerify.mjs",
+      "require": "./dist/pdfVerify.js",
+      "types": "./dist/pdfVerify.d.ts"
+    },
+    "./multi": {
+      "import": "./dist/pdfMultiSign.mjs",
+      "require": "./dist/pdfMultiSign.js",
+      "types": "./dist/pdfMultiSign.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts src/pdfVerify.ts src/pdfMultiSign.ts --format cjs,esm --dts --clean",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "pdf",
+    "signature",
+    "electronic-signature",
+    "digital-signature",
+    "eIDAS",
+    "docusign-alternative",
+    "pdf-sign",
+    "legal",
+    "pkcs7",
+    "x509",
+    "esign",
+    "contract",
+    "compliance",
+    "typescript"
+  ],
+  "dependencies": {
+    "axios": "^1.6.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "tsup": "^8.0.0",
+    "vitest": "^1.0.0",
+    "@vitest/coverage-v8": "^1.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "peerDependencies": {
+    "node": ">=18.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pdf-signature/pdf-signature"
+  },
+  "homepage": "https://pdf-signature.dev",
+  "bugs": {
+    "url": "https://github.com/pdf-signature/pdf-signature/issues"
+  },
+  "author": {
+    "name": "pdf-signature team",
+    "email": "team@pdf-signature.dev",
+    "url": "https://pdf-signature.dev"
+  }
+}
