@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>pdf-signature</title>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0b0f19;
+      color: #ffffff;
+      line-height: 1.6;
+    }
+
+    header {
+      padding: 80px 20px;
+      text-align: center;
+      background: linear-gradient(135deg, #4f46e5, #06b6d4);
+    }
+
+    header h1 {
+      font-size: 42px;
+      margin-bottom: 10px;
+    }
+
+    header p {
+      font-size: 18px;
+      opacity: 0.9;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: auto;
+      padding: 40px 20px;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #1f2937;
+      padding: 6px 12px;
+      margin: 5px;
+      border-radius: 20px;
+      font-size: 12px;
+    }
+
+    h2 {
+      margin-top: 40px;
+      color: #60a5fa;
+    }
+
+    pre {
+      background: #111827;
+      padding: 15px;
+      border-radius: 10px;
+      overflow-x: auto;
+    }
+
+    .card {
+      background: #111827;
+      padding: 20px;
+      margin-top: 20px;
+      border-radius: 12px;
+      border: 1px solid #1f2937;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 10px 18px;
+      margin-top: 10px;
+      background: #4f46e5;
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+    }
+
+    footer {
+      text-align: center;
+      padding: 30px;
+      font-size: 13px;
+      opacity: 0.6;
+    }
+
+    a { color: #38bdf8; }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <h1>pdf-signature</h1>
+  <p>Legal PDF e-signatures in one line of code</p>
+
+  <div>
+    <span class="badge">eIDAS Compliant</span>
+    <span class="badge">PKCS#7</span>
+    <span class="badge">X.509</span>
+    <span class="badge">RFC 3161</span>
+    <span class="badge">MIT License</span>
+  </div>
+</header>
+
+<div class="container">
+
+  <h2>⚡ Overview</h2>
+  <div class="card">
+    A production-ready SDK for signing and verifying PDFs with cryptographic compliance (AdES-B-LT).
+    Built for enterprise-grade digital signature workflows.
+  </div>
+
+  <h2>📦 Install</h2>
+  <pre>
+npm install @pdf-signature/core
+pnpm add @pdf-signature/core
+yarn add @pdf-signature/core
+  </pre>
+
+  <h2>✍️ Sign a PDF</h2>
+  <pre>
+import { pdfSign } from '@pdf-signature/core';
+
+const result = await pdfSign({
+  pdfBuffer: fs.readFileSync('./contract.pdf'),
+  signerInfo: {
+    name: "Alice Johnson",
+    email: "alice@example.com",
+    organization: "Acme Corp"
+  },
+  apiKey: process.env.PDF_SIGNATURE_API_KEY!
+});
+
+fs.writeFileSync('./signed.pdf', result.signedPdfBuffer);
+  </pre>
+
+  <h2>🔍 Verify Signature</h2>
+  <pre>
+import { pdfVerify } from '@pdf-signature/core';
+
+const res = await pdfVerify({
+  pdfBuffer: fs.readFileSync('./signed.pdf'),
+  apiKey: process.env.PDF_SIGNATURE_API_KEY!
+});
+
+console.log(res.isValid);
+  </pre>
+
+  <h2>📊 Features</h2>
+  <div class="card">
+    ✔ PKCS#7 Detached Signatures<br/>
+    ✔ X.509 Ephemeral Certificates<br/>
+    ✔ RFC 3161 Timestamping<br/>
+    ✔ Multi-signer workflows<br/>
+    ✔ Enterprise compliance ready
+  </div>
+
+  <h2>📚 Links</h2>
+  <div class="card">
+    <a class="btn" href="https://github.com/Brah-Timo/pdf-signature">GitHub Repo</a>
+    <a class="btn" href="https://www.npmjs.com/package/@pdf-signature/core">npm Package</a>
+    <a class="btn" href="#">Documentation</a>
+  </div>
+
+</div>
+
+<footer>
+  © 2026 pdf-signature · Built with GitHub Pages
+</footer>
+
+</body>
+</html>
